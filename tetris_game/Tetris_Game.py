@@ -1,8 +1,6 @@
 #imports
 from tetris_game.game_vars import *
 from tetris_game.file_manager import *
-from random import randrange as rand
-from datetime import datetime as dt
 from just_playback import Playback
 import pygame, time, random
 
@@ -73,12 +71,10 @@ class TetrisGame():
         #creates width and height of screen
         self.width = cell_size * (cols + 6)
         self.height = cell_size * rows
-        self.rlim = cell_size * cols  #creates the right-hand limit distance of the game
+        self.rlim = cell_size * cols  #creates the right-hand limit distance of the game board
 
         #generates grid for background
-        self.grid = [
-            [8 if x % 2 == y % 2 else 0 for x in range(cols)] for y in range(rows)
-        ]
+        self.grid = self.new_grid()
 
         self.default_font = pygame.font.SysFont("Arial", 14)
         self.default_font_2 = pygame.font.SysFont("Arial", 16)
@@ -114,8 +110,21 @@ class TetrisGame():
         else:
             self.high_score = "N/A"
         
-        #creates custom pygame event for keeping track of game speed2 x
+        #creates custom pygame event for keeping track of game speed
         pygame.time.set_timer(pygame.USEREVENT + 1, 1000)
+    
+    #generates checkered background grid
+    def new_grid(self):
+        self.grid = []
+        for y in range(rows):
+            line = []
+            for x in range(cols):
+                if (x%2 == y%2):
+                    line.append(8)
+                else:
+                    line.append(0)
+            self.grid.append(line)
+        return self.grid
 
     #Generates a new board matrix
     def new_board(self):
@@ -166,16 +175,21 @@ class TetrisGame():
     def check_collision(self, shape, offset):
         if shape == "null":
             shape = self.piece.shape
-        #distance of top left cell in shape matrix from the top left of the tetris board
+        #XY coordinate of top left piece of the shape mapped onto the game board matrix
         off_x, off_y = offset
-        #matches each block within the shape with the appropriate XY coords on the board
+        pc_list = []
+        #generates a temp-list of each cell's local YX position, with the value of each cell
         for cy, row in enumerate(shape):
-            for cx, cell in enumerate(row):
-                try:
-                    if (cell and self.board[cy + off_y][cx + off_x]) or cell < 0: #checks if the two coords are the same (collision)
-                        return True
-                except IndexError: #checks if XY coord is out of range of the board
+            for cx, val in enumerate(row):
+                pc_list.append([cy, cx, val])
+                pass
+        #checks each cell in the temp list
+        for cell in pc_list:
+            try:
+                if (cell[2] and self.board[cell[0] + off_y][cell[1]+ off_x]) or cell[1] < 0: #checks if the two coords are the same (collision), or if cell is too far left
                     return True
+            except IndexError: #checks if XY coord is out of range of the board
+                return True
         return False
 
     #Generates new piece and checks for game over
@@ -205,18 +219,14 @@ class TetrisGame():
             if self.check_collision("null", (self.piece.piece_x, self.piece.piece_y)):
                 self.board = self.join_mats((self.piece.piece_x, self.piece.piece_y))
                 self.new_piece()
-                cleared_rows = 0
-                while True:
-                    #checks each row on the grid to see if any lines are completely filled
-                    for i, row in enumerate(self.board[:-1]):
-                        if 0 not in row:
-                            self.board = self.remove_line(i) 
-                            cleared_rows += 1
-                            break
-                    else:
-                        break
+                cleared_lines = 0
+                #checks each row on the grid to see if any lines are completely filled
+                for i, line in enumerate(self.board[:-1]):
+                    if 0 not in line:
+                        self.board = self.remove_line(i) 
+                        cleared_lines += 1
                 #calculates scores from lines cleared
-                self.add_cleared_lines(cleared_rows)
+                self.add_cleared_lines(cleared_lines)
                 return True
             else:
                 return False
@@ -245,20 +255,22 @@ class TetrisGame():
         pygame.time.set_timer(pygame.USEREVENT + 1, new_delay)
 
     #Removes line(s) from the board
-    def remove_line(self, row):
-        del self.board[row]
-        return [[0 for i in range(cols)]] + self.board
+    def remove_line(self, line):
+        del self.board[line]
+        #adds clear lines to the top of the board
+        self.board = [[0 for i in range(cols)]] + self.board
+        return self.board
     
     #Draws the blocks onto the screen to represent the game
     def draw_mats(self, item, offset):
         #distance of top left cell in shape matrix from the top left of the tetris board
         off_x, off_y = offset
         for cy, row in enumerate(item):
-            for cx, val in enumerate(row):
-                if val:
+            for cx, cell in enumerate(row):
+                if cell:
                     pygame.draw.rect(
                         self.screen,
-                        colors[val],
+                        colors[cell],
                         pygame.Rect(
                             (off_x + cx) * cell_size,
                             (off_y + cy) * cell_size,
@@ -270,17 +282,17 @@ class TetrisGame():
     
     #Connects the shape matrix to the board matrix
     def join_mats(self, off_set):
-        #distance of top left cell in shape matrix from the top left of the tetris display
+        #XY position of top left cell in shape matrix mapped to the game board matrix
         off_x, off_y = off_set
         for cy, row in enumerate(self.piece.shape):
-            for cx, val in enumerate(row):
-                self.board[cy + off_y - 1][cx + off_x] += val
+            for cx, cell in enumerate(row):
+                self.board[cy + off_y - 1][cx + off_x] += cell #converts board cell to piece cell
         return self.board
     
     #Manages horizontal movement via key actuation
-    def move(self, change_x):
+    def move(self, dx):
         if not self.gameover and not self.paused:
-            new_x = self.piece.piece_x + change_x
+            new_x = self.piece.piece_x + dx
             #checks for horizontal collisions
             if new_x < 0:
                 new_x = 0
@@ -305,14 +317,14 @@ class TetrisGame():
                     off_set += 1
                     if not self.check_collision(
                         new_piece,
-                        (self.piece.piece_x - off_set, self.piece.piece_y),
+                        (self.piece.piece_x - off_set, self.piece.piece_y), #left offset
                     ):
                         self.piece.piece_x -= off_set
                         self.piece.shape = new_piece
                         return
                     elif not self.check_collision(
                         new_piece,
-                        (self.piece.piece_x + off_set, self.piece.piece_y),
+                        (self.piece.piece_x + off_set, self.piece.piece_y), #right offset
                     ):
                         self.piece.piece_x += off_set
                         self.piece.shape = new_piece
@@ -448,6 +460,7 @@ class TetrisGame():
                             if event.key == eval("pygame.K_" + key):
                                 keybinds[key]()
 
+                #runs pygame at the stated FPS
                 clock.tick(maxfps)
             except:
                 pass

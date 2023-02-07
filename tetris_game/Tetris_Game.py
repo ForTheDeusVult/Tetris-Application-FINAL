@@ -48,14 +48,21 @@ class piece():
     #clockwise rotations reverses the shape list before applying the rotation function
     #anticlockwise rotations reverses the shape list after
     def rotate(self, direction):
+        new_piece = self.shape
         if direction == "clock":
-            self.shape.reverse()
-        new_rotation = list(
+            new_rotation = list(
+                map(list, 
+                    map(reversed,
+                        zip(*new_piece)
+                        )
+                    )
+                )
+        elif direction == "anti":
+            new_rotation = list(
                     map(list,
-                        zip(*self.shape) #reforms the shape matrix into tuples according to their index positions in the original lists
+                        zip(*new_piece) #reforms the shape matrix into tuples according to their index positions in the original lists
                         ) #converts each tuple into a list
                     ) #maps all lists into one master list to form thew new matrix
-        if direction == "anti":
             new_rotation.reverse()
         return new_rotation
 
@@ -177,14 +184,14 @@ class TetrisGame():
             shape = self.piece.shape
         #XY coordinate of top left piece of the shape mapped onto the game board matrix
         off_x, off_y = offset
-        pc_list = []
+        temp_list = []
         #generates a temp-list of each cell's local YX position, with the value of each cell
         for cy, row in enumerate(shape):
             for cx, val in enumerate(row):
-                pc_list.append([cy, cx, val])
+                temp_list.append([cy, cx, val])
                 pass
         #checks each cell in the temp list
-        for cell in pc_list:
+        for cell in temp_list:
             try:
                 if (cell[2] and self.board[cell[0] + off_y][cell[1]+ off_x]) or cell[1] < 0: #checks if the two coords are the same (collision), or if cell is too far left
                     return True
@@ -264,29 +271,39 @@ class TetrisGame():
     #Draws the blocks onto the screen to represent the game
     def draw_mats(self, item, offset):
         #distance of top left cell in shape matrix from the top left of the tetris board
+        temp_list = []
         off_x, off_y = offset
+        #generates a temp-list of each cell's local YX position, with the value of each cell
         for cy, row in enumerate(item):
-            for cx, cell in enumerate(row):
-                if cell:
-                    pygame.draw.rect(
-                        self.screen,
-                        colors[cell],
-                        pygame.Rect(
-                            (off_x + cx) * cell_size,
-                            (off_y + cy) * cell_size,
-                            cell_size,
-                            cell_size,
-                        ),
-                        0,
-                    )
+            for cx, val in enumerate(row):
+                temp_list.append([cy, cx, val])
+        #draws each cell of the shape onto the display
+        for cell in temp_list:
+            if cell[2]:
+                pygame.draw.rect(
+                    self.screen,
+                    colors[cell[2]],
+                    pygame.Rect(
+                        (cell[1] + off_x) * cell_size,
+                        (cell[0] + off_y) * cell_size,
+                        cell_size,
+                        cell_size,
+                    ),
+                    0,
+                )
     
     #Connects the shape matrix to the board matrix
     def join_mats(self, off_set):
         #XY position of top left cell in shape matrix mapped to the game board matrix
+        temp_list = []
         off_x, off_y = off_set
+        #generates a temp-list of each cell's local YX position, with the value of each cell
         for cy, row in enumerate(self.piece.shape):
-            for cx, cell in enumerate(row):
-                self.board[cy + off_y - 1][cx + off_x] += cell #converts board cell to piece cell
+            for cx, val in enumerate(row):
+                temp_list.append([cy, cx, val])
+        #checks each cell of the shape
+        for cell in temp_list:
+            self.board[cell[0] + off_y - 1][cell[1] + off_x] += cell[2] #converts board cell to piece cell
         return self.board
     
     #Manages horizontal movement via key actuation
@@ -304,6 +321,7 @@ class TetrisGame():
      #Manages the rotation procedure
     def rotate_piece(self, direction):
         if not self.gameover and not self.paused:
+            temp = self.piece
             new_piece = piece.rotate(self.piece, direction)
             off_set = 0
             if not self.check_collision(
@@ -315,6 +333,8 @@ class TetrisGame():
                 #piece is offset and checked in both left and right directions until a legal rotation is found, or until the piece has maxed out its offset value
                 for i in range(0, self.piece.get_off_set()):
                     off_set += 1
+                    if (self.piece.piece_x - off_set) < 0:
+                        return
                     if not self.check_collision(
                         new_piece,
                         (self.piece.piece_x - off_set, self.piece.piece_y), #left offset
@@ -329,6 +349,7 @@ class TetrisGame():
                         self.piece.piece_x += off_set
                         self.piece.shape = new_piece
                         return
+                self.piece = temp
                 return
         else:
             return
